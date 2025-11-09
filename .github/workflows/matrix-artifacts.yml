@@ -1,49 +1,37 @@
-name: Multi-Platform Matrix Build with Artifacts
-
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
-
 jobs:
   build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]  # 3+ variants in parallel
+        node: [16, 18, 20]   # 3+ variants, all on Ubuntu
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Identifier step required by the challenge
       - name: matrix-13126ee
-        run: echo "Building on ${{ matrix.os }} (RUNNER_OS=$RUNNER_OS)"
+        run: echo "Building for Node ${{ matrix.node }}"
 
-      # Install Node so we can run a cross-platform script consistently
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
 
-      # Generate a unique, non-empty artifact per variant
       - name: Generate build artifact
         run: |
           node -e "
             const fs = require('fs');
             const content = [
               'Build Artifact',
-              `Matrix OS: ${{ matrix.os }}`,
-              `Runner OS: ${process.env.RUNNER_OS}`,
-              `Runner Arch: ${process.env.RUNNER_ARCH}`,
+              `Node: ${process.version}`,
+              `Matrix Node: ${{ matrix.node }}`,
               `Commit: ${process.env.GITHUB_SHA}`,
               `Ref: ${process.env.GITHUB_REF}`,
               `Timestamp: ${new Date().toISOString()}`
             ].join('\n');
             fs.writeFileSync('output.txt', content);
           "
-          # Show it and confirm it's non-empty
           echo '--- output.txt ---'
           cat output.txt
           test -s output.txt
@@ -51,12 +39,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-13126ee-${{ matrix.os }}
+          name: build-13126ee-node${{ matrix.node }}
           path: output.txt
           if-no-files-found: error
           compression-level: 6
 
-  # Lightweight verification that artifacts exist and are non-empty
   verify:
     name: Verify artifacts
     needs: build
@@ -69,11 +56,6 @@ jobs:
           merge-multiple: true
           path: artifacts
 
-      - name: List downloaded files
-        run: |
-          echo "Artifacts directory:"
-          ls -alR artifacts || true
-
       - name: Ensure at least 3 artifacts and non-empty contents
         run: |
           set -e
@@ -83,6 +65,5 @@ jobs:
             echo "Expected at least 3 artifacts, found $files"
             exit 1
           fi
-          # Confirm each is non-empty
           find artifacts -type f -name 'output.txt' -exec test -s {} \; -print
           echo "All artifacts present and non-empty ✅"
